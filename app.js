@@ -880,6 +880,11 @@ const App = {
   signOut,
   handleAuth,
   switchAuthTab,
+  applyUpdate() {
+    navigator.serviceWorker.getRegistration().then(reg => {
+      if (reg && reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
+    });
+  },
 };
 
 // ── Boot ──────────────────────────────────────────
@@ -910,6 +915,18 @@ const App = {
   });
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      reg.addEventListener('updatefound', () => {
+        const newSW = reg.installing;
+        newSW.addEventListener('statechange', () => {
+          if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+            document.getElementById('update-banner').classList.remove('hidden');
+          }
+        });
+      });
+    }).catch(() => {});
+
+    // After SW takes over, reload to activate new version
+    navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
   }
 })();
