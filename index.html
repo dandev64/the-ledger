@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#7C3AED">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="The Ledger">
+  <title>The Ledger</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ═══════════════════ AUTH SCREEN ═══════════════════ -->
+  <div id="page-auth" class="auth-screen hidden">
+    <div class="auth-container">
+      <div class="auth-logo">
+        <svg width="32" height="32" viewBox="0 0 22 22" fill="none">
+          <rect x="1" y="1" width="8" height="8" rx="2" fill="#a78bfa"/>
+          <rect x="13" y="1" width="8" height="8" rx="2" fill="#7C3AED" opacity="0.6"/>
+          <rect x="1" y="13" width="8" height="8" rx="2" fill="#7C3AED" opacity="0.6"/>
+          <rect x="13" y="13" width="8" height="8" rx="2" fill="#c4b5fd"/>
+        </svg>
+        <span class="auth-logo-text">The Ledger</span>
+      </div>
+      <p class="auth-tagline">Your personal finance tracker</p>
+
+      <div class="auth-tabs">
+        <button id="auth-tab-login"  class="auth-tab active" onclick="App.switchAuthTab('login')">Sign In</button>
+        <button id="auth-tab-signup" class="auth-tab"        onclick="App.switchAuthTab('signup')">Sign Up</button>
+      </div>
+
+      <form id="auth-form" onsubmit="App.handleAuth(event)">
+        <div class="auth-field">
+          <label class="auth-label">Email</label>
+          <input id="auth-email" class="auth-input" type="email" placeholder="you@example.com" required autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <label class="auth-label">Password</label>
+          <input id="auth-password" class="auth-input" type="password" placeholder="••••••••" required autocomplete="current-password" minlength="6">
+        </div>
+        <div id="auth-error" class="auth-error hidden"></div>
+        <button id="auth-submit-btn" class="auth-submit" type="submit">Sign In</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ MAIN APP ═══════════════════ -->
+  <div id="app-shell" class="hidden">
+  <div id="app">
+
+    <!-- ═══════════════════ PAGE: HOME ═══════════════════ -->
+    <div id="page-home" class="page active">
+      <div class="home-hero">
+        <div class="home-header">
+          <div class="home-logo">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+              <rect x="1" y="1" width="8" height="8" rx="2" fill="#a78bfa"/>
+              <rect x="13" y="1" width="8" height="8" rx="2" fill="white" opacity="0.6"/>
+              <rect x="1" y="13" width="8" height="8" rx="2" fill="white" opacity="0.6"/>
+              <rect x="13" y="13" width="8" height="8" rx="2" fill="#c4b5fd"/>
+            </svg>
+            <span class="logo-text">The Ledger</span>
+          </div>
+          <div class="home-header-actions">
+            <button class="icon-btn" onclick="App.openNotifications()" aria-label="Notifications">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+            </button>
+            <div class="avatar" onclick="App.openWalletManager()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+        <div class="balance-card">
+          <div class="balance-label">TOTAL BALANCE</div>
+          <div class="balance-amount" id="home-total-balance">₱0.00</div>
+          <div class="balance-meta">
+            <div>
+              <div class="balance-sub-label">Spent Today</div>
+              <div class="balance-sub-value" id="home-spent-today">₱0.00</div>
+            </div>
+            <div class="balance-badge" id="home-spent-badge">+0%</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="home-body">
+        <div class="section-row">
+          <span class="section-title">My Wallets</span>
+          <button class="see-all-btn" onclick="App.openWalletManager()">See All</button>
+        </div>
+        <div class="wallets-scroll" id="home-wallets">
+          <!-- rendered by JS -->
+        </div>
+
+        <div class="section-row" style="margin-top:24px">
+          <span class="section-title">Recent Activity</span>
+          <button class="icon-btn-sm" onclick="App.navigate('history')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="21" y1="6" x2="3" y2="6"/><line x1="15" y1="12" x2="3" y2="12"/><line x1="17" y1="18" x2="3" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div id="home-recent" class="tx-list">
+          <!-- rendered by JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ PAGE: ADD ═══════════════════ -->
+    <div id="page-add" class="page">
+      <div class="add-top-bar">
+        <button class="back-btn" onclick="App.navigate('home')" aria-label="Back">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+        <h2 class="add-title" id="add-page-title">Add Expense</h2>
+        <div style="width:36px"></div>
+      </div>
+
+      <div class="add-type-row">
+        <button class="type-tab active" id="tab-expense" onclick="App.setAddType('expense')">Expense</button>
+        <button class="type-tab" id="tab-cashin" onclick="App.setAddType('cashin')">Cash In</button>
+      </div>
+
+      <div class="amount-block">
+        <div class="amount-block-label" id="add-amount-label">Amount Spent</div>
+        <div class="amount-row">
+          <span class="peso-sign">₱</span>
+          <input type="number" id="add-amount" class="amount-field" placeholder="0.00" min="0" step="0.01" inputmode="decimal">
+        </div>
+      </div>
+
+      <div class="add-form-body">
+        <div class="form-group">
+          <div class="form-group-label">Select Account</div>
+          <div class="wallet-chip-row" id="add-wallet-chips">
+            <!-- rendered by JS -->
+          </div>
+          <button class="add-wallet-link" onclick="App.openWalletManager()">+ Add wallet</button>
+        </div>
+
+        <div class="form-group" id="fg-category">
+          <div class="form-group-label">Category</div>
+          <div class="cat-chip-row" id="add-cat-chips">
+            <button class="cat-chip active" data-cat="Food" onclick="App.selectCategory(this)">Food</button>
+            <button class="cat-chip" data-cat="Transport" onclick="App.selectCategory(this)">Transport</button>
+            <button class="cat-chip" data-cat="Shopping" onclick="App.selectCategory(this)">Shopping</button>
+            <button class="cat-chip" data-cat="Bills" onclick="App.selectCategory(this)">Bills</button>
+            <button class="cat-chip" data-cat="Others" onclick="App.selectCategory(this)">Others</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="form-group-label">DATE &amp; TIME</div>
+          <div class="input-row">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            <input type="datetime-local" id="add-date" class="text-field">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="form-group-label">NOTES</div>
+          <div class="input-row">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2">
+              <line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="12" x2="3" y2="12"/><line x1="21" y1="18" x2="3" y2="18"/>
+            </svg>
+            <input type="text" id="add-note" class="text-field" placeholder="What was this for?">
+          </div>
+        </div>
+      </div>
+
+      <div class="add-footer">
+        <button class="save-btn" id="save-btn" onclick="App.saveTransaction()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          <span id="save-btn-label">Save Expense</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ PAGE: HISTORY ═══════════════════ -->
+    <div id="page-history" class="page">
+      <div class="page-header">
+        <h1 class="page-title">History</h1>
+      </div>
+
+      <div class="history-search-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" id="history-search" class="history-search" placeholder="Search transactions..." oninput="App.renderHistory()">
+      </div>
+
+      <div class="filter-scroll" id="history-filters">
+        <button class="filter-chip active" data-filter="all" onclick="App.setHistoryFilter(this)">All</button>
+        <button class="filter-chip" data-filter="expense" onclick="App.setHistoryFilter(this)">Expenses</button>
+        <button class="filter-chip" data-filter="cashin" onclick="App.setHistoryFilter(this)">Cash-ins</button>
+        <button class="filter-chip" data-filter="Food" onclick="App.setHistoryFilter(this)">Food</button>
+        <button class="filter-chip" data-filter="Transport" onclick="App.setHistoryFilter(this)">Transport</button>
+        <button class="filter-chip" data-filter="Shopping" onclick="App.setHistoryFilter(this)">Shopping</button>
+        <button class="filter-chip" data-filter="Bills" onclick="App.setHistoryFilter(this)">Bills</button>
+        <button class="filter-chip" data-filter="this-week" onclick="App.setHistoryFilter(this)">This Week</button>
+      </div>
+
+      <div id="history-list" class="history-list">
+        <!-- rendered by JS -->
+      </div>
+    </div>
+
+    <!-- ═══════════════════ PAGE: REPORTS ═══════════════════ -->
+    <div id="page-reports" class="page">
+      <div class="page-header">
+        <h1 class="page-title">Reports</h1>
+        <p class="page-subtitle">Detailed analysis of your spending</p>
+      </div>
+
+      <div class="period-row">
+        <button class="period-tab" id="ptab-day" onclick="App.setReportPeriod('day')">Day</button>
+        <button class="period-tab active" id="ptab-week" onclick="App.setReportPeriod('week')">Week</button>
+        <button class="period-tab" id="ptab-month" onclick="App.setReportPeriod('month')">Month</button>
+      </div>
+
+      <div class="report-summary-card">
+        <div class="report-summary-label" id="report-period-label">TOTAL SPENT THIS WEEK</div>
+        <div class="report-summary-row">
+          <div class="report-total" id="report-total">₱0</div>
+          <div class="report-change positive" id="report-change">+0% vs last week</div>
+        </div>
+        <div class="mini-chart" id="mini-chart">
+          <!-- rendered by JS -->
+        </div>
+      </div>
+
+      <div class="section-row" style="margin-top:24px; padding: 0 20px;">
+        <span class="section-title dark">Category Breakdown</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2">
+          <line x1="21" y1="6" x2="3" y2="6"/><line x1="15" y1="12" x2="3" y2="12"/><line x1="17" y1="18" x2="3" y2="18"/>
+        </svg>
+      </div>
+      <div id="report-breakdown" class="report-breakdown">
+        <!-- rendered by JS -->
+      </div>
+
+      <div class="section-row" style="margin-top:24px; padding: 0 20px;">
+        <span class="section-title dark">Insights</span>
+      </div>
+      <div id="report-insights" class="report-insights">
+        <!-- rendered by JS -->
+      </div>
+    </div>
+
+    <!-- ═══════════════════ BOTTOM NAV ═══════════════════ -->
+    <nav class="bottom-nav" id="bottom-nav">
+      <button class="nav-item active" id="nav-home" onclick="App.navigate('home')" aria-label="Home">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        <span class="nav-label">HOME</span>
+      </button>
+      <button class="nav-item" id="nav-history" onclick="App.navigate('history')" aria-label="History">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        <span class="nav-label">HISTORY</span>
+      </button>
+      <button class="nav-fab" onclick="App.navigate('add')" id="nav-add" aria-label="Add">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+      </button>
+      <button class="nav-item" id="nav-reports" onclick="App.navigate('reports')" aria-label="Reports">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="18" y="3" width="4" height="18"/><rect x="10" y="8" width="4" height="13"/><rect x="2" y="13" width="4" height="8"/>
+        </svg>
+        <span class="nav-label">REPORTS</span>
+      </button>
+    </nav>
+
+    <!-- ═══════════════════ MODAL ═══════════════════ -->
+    <div id="modal-overlay" class="modal-overlay hidden" onclick="App.closeModal(event)">
+      <div class="modal-sheet" id="modal-sheet" onclick="event.stopPropagation()">
+        <div class="modal-handle"></div>
+        <div id="modal-content"><!-- injected by JS --></div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════ TOAST ═══════════════════ -->
+    <div id="toast" class="toast hidden"></div>
+
+  </div><!-- #app -->
+  </div><!-- #app-shell -->
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "the-ledger",
+  "version": "1.0.0",
+  "description": "Personal finance tracker PWA",
+  "scripts": {
+    "start": "npx serve .",
+    "dev": "npx serve . --listen 3000"
+  }
+}
