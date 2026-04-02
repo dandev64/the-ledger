@@ -1000,6 +1000,7 @@ function initSheetDrag(sheet, overlay) {
 
   function onMove(e) {
     if (!dragging) return;
+    e.preventDefault();
     const touch = e.touches ? e.touches[0] : e;
     currentY = Math.max(0, touch.clientY - startY); // only drag down
     sheet.style.transform = `translateY(${currentY}px)`;
@@ -1036,7 +1037,7 @@ function initSheetDrag(sheet, overlay) {
   sheet._dragEnd   = onEnd;
 
   sheet.addEventListener('touchstart', onStart, { passive: true });
-  sheet.addEventListener('touchmove',  onMove,  { passive: true });
+  sheet.addEventListener('touchmove',  onMove,  { passive: false });
   sheet.addEventListener('touchend',   onEnd);
 }
 
