@@ -31,6 +31,7 @@ let currentUser = null;
 let state = {
   wallets: [],
   transactions: [],
+  budget: { period: 'monthly', total: 0, categories: { Food: 0, Transport: 0, Shopping: 0, Bills: 0, Others: 0 } },
   currentPage: 'home',
   addForm: { type: 'expense', walletId: null, category: 'Food' },
   historyFilter: 'all',
@@ -214,6 +215,7 @@ function navigate(page) {
   if (page === 'history') renderHistory();
   if (page === 'reports') renderReports();
   if (page === 'add')     initAddForm();
+  if (page === 'budget')  renderBudgetPage();
 }
 
 // ══════════════════════════════════════════════════
@@ -254,6 +256,8 @@ function renderHome() {
       <span>Add</span>
     </div>
   `;
+
+  renderBudgetWidget();
 
   const recent = [...state.transactions]
     .sort((a,b) => new Date(b.date) - new Date(a.date))
@@ -325,6 +329,7 @@ function initAddForm() {
   document.querySelectorAll('.cat-chip').forEach(b => {
     b.classList.toggle('active', b.dataset.cat === f.category);
   });
+  updateBudgetWarning();
 }
 
 function setAddType(type) {
@@ -344,6 +349,7 @@ function selectCategory(btn) {
   state.addForm.category = btn.dataset.cat;
   document.querySelectorAll('.cat-chip').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  updateBudgetWarning();
 }
 
 async function saveTransaction() {
@@ -384,7 +390,23 @@ async function saveTransaction() {
   state.transactions.unshift(tx);
   wallet.balance = newBalance;
 
-  toast(type === 'cashin' ? '✓ Cash in recorded' : '✓ Expense saved', 'success');
+  let savedMsg = type === 'cashin' ? '✓ Cash in recorded' : '✓ Expense saved';
+  let savedType = 'success';
+  if (type === 'expense') {
+    const catBudgetAmt = state.budget.categories[category] || 0;
+    if (catBudgetAmt > 0) {
+      const start = budgetPeriodStart();
+      const periodSpent = state.transactions
+        .filter(t => t.type === 'expense' && t.category === category && new Date(t.date) >= start)
+        .reduce((s, t) => s + t.amount, 0);
+      if (periodSpent > catBudgetAmt) {
+        savedMsg = `⚠️ Saved — ${category} budget exceeded`;
+        savedType = 'error';
+      }
+    }
+  }
+
+  toast(savedMsg, savedType);
   navigate('home');
 }
 
@@ -636,6 +658,322 @@ function renderInsights(period, expTxs, curSpent, prevSpent, sorted) {
 }
 
 // ══════════════════════════════════════════════════
+// BUDGET
+// ══════════════════════════════════════════════════
+
+async function loadBudget() {
+  if (!currentUser) return;
+  const { data } = await db.from('budgets').select('*').eq('user_id', currentUser.id).maybeSingle();
+  if (data) {
+    state.budget = {
+      period: data.period || 'monthly',
+      total:  Number(data.total) || 0,
+      categories: {
+        Food:      Number(data.cat_food)      || 0,
+        Transport: Number(data.cat_transport) || 0,
+        Shopping:  Number(data.cat_shopping)  || 0,
+        Bills:     Number(data.cat_bills)     || 0,
+        Others:    Number(data.cat_others)    || 0,
+      },
+    };
+  }
+}
+
+async function saveBudget() {
+  if (!currentUser) return;
+  const { period, total, categories } = state.budget;
+  await db.from('budgets').upsert({
+    user_id:       currentUser.id,
+    period,
+    total,
+    cat_food:      categories.Food,
+    cat_transport: categories.Transport,
+    cat_shopping:  categories.Shopping,
+    cat_bills:     categories.Bills,
+    cat_others:    categories.Others,
+  }, { onConflict: 'user_id' });
+}
+
+function budgetPeriodStart() {
+  return startOf(state.budget.period === 'weekly' ? 'week' : 'month');
+}
+
+function budgetSpentByCategory() {
+  const start = budgetPeriodStart();
+  const map = { Food: 0, Transport: 0, Shopping: 0, Bills: 0, Others: 0 };
+  state.transactions
+    .filter(t => t.type === 'expense' && new Date(t.date) >= start)
+    .forEach(t => {
+      const key = map.hasOwnProperty(t.category) ? t.category : 'Others';
+      map[key] += t.amount;
+    });
+  return map;
+}
+
+function budgetDaysLeft() {
+  const now = new Date();
+  let end;
+  if (state.budget.period === 'weekly') {
+    end = new Date(startOf('week'));
+    end.setDate(end.getDate() + 7);
+  } else {
+    end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  }
+  return Math.max(1, Math.ceil((end - now) / 86400000));
+}
+
+function renderBudgetWidget() {
+  const el = document.getElementById('home-budget');
+  if (!el) return;
+  const { total, categories } = state.budget;
+  const hasBudget = total > 0 || Object.values(categories).some(v => v > 0);
+
+  if (!hasBudget) {
+    el.innerHTML = `
+      <div class="budget-widget-empty">
+        <div class="budget-empty-row">
+          <span class="budget-empty-icon">📊</span>
+          <div>
+            <div class="budget-empty-title">No budget set</div>
+            <div class="budget-empty-sub">Track your spending with a budget</div>
+          </div>
+        </div>
+        <button class="budget-setup-btn" onclick="App.navigate('budget')">Set Up →</button>
+      </div>
+    `;
+    return;
+  }
+
+  const spent          = budgetSpentByCategory();
+  const totalSpent     = Object.values(spent).reduce((s, v) => s + v, 0);
+  const catTotal       = Object.values(categories).reduce((s, v) => s + v, 0);
+  const effectiveTotal = total > 0 ? total : catTotal;
+  const daysLeft       = budgetDaysLeft();
+  const overBudget     = effectiveTotal > 0 && totalSpent > effectiveTotal;
+  const usedPct        = effectiveTotal > 0 ? Math.min(totalSpent / effectiveTotal, 1) : 0;
+  const remaining      = effectiveTotal > 0 ? Math.max(0, effectiveTotal - totalSpent) : null;
+  const safeToSpend    = (remaining !== null && daysLeft > 0) ? remaining / daysLeft : null;
+
+  const R    = 46;
+  const circ = 2 * Math.PI * R;
+  const usedColor = overBudget ? '#ef4444' : '#7C3AED';
+  const usedDash  = usedPct * circ;
+
+  const BUDGET_CATS = ['Food','Transport','Shopping','Bills','Others'];
+  const activeCats  = BUDGET_CATS.filter(c => categories[c] > 0);
+
+  const catBarsHtml = activeCats.map(c => {
+    const budget   = categories[c];
+    const spentAmt = spent[c] || 0;
+    const pct      = Math.min(spentAmt / budget, 1) * 100;
+    const isOver   = spentAmt > budget;
+    const isWarn   = !isOver && spentAmt / budget >= 0.8;
+    const barColor = isOver ? '#ef4444' : isWarn ? '#f59e0b' : catColor(c);
+    return `
+      <div class="budget-cat-row">
+        <div class="budget-cat-left">
+          <div class="budget-cat-icon" style="background:${catBg(c)}">${catIcon(c)}</div>
+          <div class="budget-cat-info">
+            <div class="budget-cat-name">${c}${isOver ? ' <span class="budget-over-badge">OVER</span>' : ''}</div>
+            <div class="budget-cat-amounts">${fmt(spentAmt)} <span class="budget-cat-sep">/</span> ${fmt(budget)}</div>
+          </div>
+        </div>
+        <div class="budget-cat-remaining${isOver ? ' over' : ''}">${isOver ? '-'+fmt(spentAmt - budget) : fmt(budget - spentAmt)}</div>
+      </div>
+      <div class="budget-bar-bg">
+        <div class="budget-bar-fill" style="width:${pct}%;background:${barColor}"></div>
+      </div>
+    `;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="budget-widget-header">
+      <span class="section-title">Budget Overview</span>
+      <button class="see-all-btn" onclick="App.navigate('budget')">Settings</button>
+    </div>
+    <div class="budget-overview-card">
+      <div class="budget-donut-row">
+        <div class="budget-donut-wrap">
+          <svg width="112" height="112" viewBox="0 0 112 112">
+            <circle cx="56" cy="56" r="${R}" fill="none" stroke="#f3f4f6" stroke-width="11"/>
+            <circle cx="56" cy="56" r="${R}" fill="none" stroke="${usedColor}" stroke-width="11"
+              stroke-dasharray="${usedDash.toFixed(1)} ${circ.toFixed(1)}"
+              stroke-dashoffset="${(circ * 0.25).toFixed(1)}"
+              stroke-linecap="round"/>
+          </svg>
+          <div class="budget-donut-center">
+            <div class="budget-donut-pct">${Math.round(usedPct * 100)}%</div>
+            <div class="budget-donut-lbl">used</div>
+          </div>
+        </div>
+        <div class="budget-donut-stats">
+          <div class="budget-stat-item">
+            <div class="budget-stat-lbl">Used</div>
+            <div class="budget-stat-val">${fmtShort(totalSpent)}</div>
+          </div>
+          <div class="budget-stat-item">
+            <div class="budget-stat-lbl">Total</div>
+            <div class="budget-stat-val">${fmtShort(effectiveTotal)}</div>
+          </div>
+          <div class="budget-stat-item">
+            <div class="budget-stat-lbl">Safe/Day</div>
+            <div class="budget-stat-val${safeToSpend !== null && safeToSpend <= 0 ? ' over' : ''}">${safeToSpend !== null ? fmtShort(Math.max(0, safeToSpend)) : '—'}</div>
+          </div>
+          <div class="budget-stat-item">
+            <div class="budget-stat-lbl">Days Left</div>
+            <div class="budget-stat-val">${daysLeft}</div>
+          </div>
+        </div>
+      </div>
+      ${activeCats.length > 0 ? `<div class="budget-cats-list">${catBarsHtml}</div>` : ''}
+    </div>
+  `;
+}
+
+function renderBudgetPage() {
+  const { period, total, categories } = state.budget;
+  const BUDGET_CATS = ['Food','Transport','Shopping','Bills','Others'];
+  const allocated   = BUDGET_CATS.reduce((s, c) => s + (categories[c] || 0), 0);
+  const days        = period === 'weekly' ? 7 : 30;
+
+  const periodLabel = period === 'weekly'
+    ? 'Limits reset every Monday'
+    : 'Limits reset on the 1st of each month';
+  const perLabel = period === 'weekly' ? 'per week' : 'per month';
+  const effectiveTotal = total > 0 ? total : allocated;
+
+  document.getElementById('budget-page-content').innerHTML = `
+    <div class="budget-settings-card">
+      <div class="period-row" style="margin-bottom:8px">
+        <button class="period-tab ${period === 'weekly' ? 'active' : ''}" id="bsp-weekly"  onclick="App.setBudgetPeriod('weekly')">Weekly</button>
+        <button class="period-tab ${period === 'monthly' ? 'active' : ''}" id="bsp-monthly" onclick="App.setBudgetPeriod('monthly')">Monthly</button>
+      </div>
+      <div class="budget-period-hint">${periodLabel}</div>
+      <div style="margin-top:16px">
+        <div class="form-group-label">TOTAL SPENDING LIMIT <span class="budget-period-tag">${perLabel}</span></div>
+        <div class="budget-total-input-row">
+          <span class="peso-sign" style="color:var(--purple);font-size:20px;margin-right:4px">₱</span>
+          <input type="number" id="bs-total" class="budget-total-field"
+            placeholder="0" min="0" step="1" value="${total || ''}"
+            oninput="App.onBudgetTotalInput()">
+        </div>
+        <div id="bs-daily-cap" class="budget-daily-cap">
+          ${effectiveTotal > 0 ? `≈ ${fmtShort(effectiveTotal / days)} per day` : ''}
+        </div>
+      </div>
+    </div>
+
+    <div class="section-row" style="margin-top:20px;padding:0 20px">
+      <span class="section-title dark">Category Limits</span>
+      <span id="bs-allocated" style="font-size:12px;color:var(--text-muted)">${allocated > 0 ? 'Allocated: ' + fmtShort(allocated) : ''}</span>
+    </div>
+
+    <div class="budget-settings-cats">
+      ${BUDGET_CATS.map(c => `
+        <div class="budget-settings-cat-item">
+          <div class="budget-settings-cat-left">
+            <div class="budget-cat-icon" style="background:${catBg(c)}">${catIcon(c)}</div>
+            <div>
+              <div class="budget-settings-cat-name">${c}</div>
+              <div class="budget-settings-cat-pct">${perLabel}</div>
+            </div>
+          </div>
+          <div class="budget-settings-cat-input-wrap">
+            <span class="budget-input-peso">₱</span>
+            <input type="number" id="bs-cat-${c}" class="budget-cat-field"
+              placeholder="0" min="0" step="1" value="${categories[c] || ''}">
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="add-footer">
+      <button class="save-btn" onclick="App.saveBudgetSettings()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        Save Budget
+      </button>
+    </div>
+  `;
+}
+
+function setBudgetPeriod(p) {
+  const prev = state.budget.period;
+  if (prev === p) return;
+
+  // Read current input values before re-render
+  const curTotal = parseFloat(document.getElementById('bs-total')?.value) || 0;
+  const curCats  = {};
+  ['Food','Transport','Shopping','Bills','Others'].forEach(c => {
+    curCats[c] = parseFloat(document.getElementById('bs-cat-' + c)?.value) || 0;
+  });
+
+  // Convert: weekly → monthly ×4.3, monthly → weekly ÷4.3
+  const factor = (p === 'monthly') ? 4.3 : (1 / 4.3);
+  const convert = v => v > 0 ? Math.round(v * factor) : 0;
+
+  state.budget.period = p;
+  state.budget.total  = convert(curTotal);
+  ['Food','Transport','Shopping','Bills','Others'].forEach(c => {
+    state.budget.categories[c] = convert(curCats[c]);
+  });
+
+  renderBudgetPage();
+}
+
+function onBudgetTotalInput() {
+  const total = parseFloat(document.getElementById('bs-total')?.value) || 0;
+  const days  = state.budget.period === 'weekly' ? 7 : 30;
+  const capEl = document.getElementById('bs-daily-cap');
+  if (capEl) capEl.textContent = total > 0 ? `Recommended daily cap: ${fmtShort(total / days)}` : '';
+}
+
+async function saveBudgetSettings() {
+  const total = parseFloat(document.getElementById('bs-total')?.value) || 0;
+  const cats  = {};
+  ['Food','Transport','Shopping','Bills','Others'].forEach(c => {
+    cats[c] = parseFloat(document.getElementById('bs-cat-' + c)?.value) || 0;
+  });
+  state.budget = { ...state.budget, total, categories: cats };
+  await saveBudget();
+  toast('Budget saved', 'success');
+  renderBudgetPage();
+  renderBudgetWidget();
+}
+
+function updateBudgetWarning() {
+  const el = document.getElementById('budget-warning');
+  if (!el) return;
+  const { type, category } = state.addForm;
+  if (type !== 'expense') { el.classList.add('hidden'); return; }
+
+  const amount = parseFloat(document.getElementById('add-amount')?.value) || 0;
+  if (amount <= 0) { el.classList.add('hidden'); return; }
+
+  const catBudgetAmt = state.budget.categories[category] || 0;
+  if (catBudgetAmt <= 0) { el.classList.add('hidden'); return; }
+
+  const start       = budgetPeriodStart();
+  const alreadySpent = state.transactions
+    .filter(t => t.type === 'expense' && t.category === category && new Date(t.date) >= start)
+    .reduce((s, t) => s + t.amount, 0);
+
+  const afterSave = alreadySpent + amount;
+  if (afterSave > catBudgetAmt) {
+    el.textContent = `⚠️ This will exceed your ${category} budget by ${fmt(afterSave - catBudgetAmt)}`;
+    el.className = 'budget-warning budget-warning-over';
+  } else if (afterSave / catBudgetAmt >= 0.8) {
+    el.textContent = `ℹ️ You'll reach ${Math.round((afterSave / catBudgetAmt) * 100)}% of your ${category} budget`;
+    el.className = 'budget-warning budget-warning-near';
+  } else {
+    el.classList.add('hidden');
+    return;
+  }
+  el.classList.remove('hidden');
+}
+
+// ══════════════════════════════════════════════════
 // WALLET MANAGER MODAL
 // ══════════════════════════════════════════════════
 let _walletEditId   = null;
@@ -880,6 +1218,11 @@ const App = {
   signOut,
   handleAuth,
   switchAuthTab,
+  renderBudgetPage,
+  saveBudgetSettings,
+  setBudgetPeriod,
+  onBudgetTotalInput,
+  updateBudgetWarning,
   applyUpdate() {
     navigator.serviceWorker.getRegistration().then(reg => {
       if (reg && reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
@@ -894,6 +1237,7 @@ const App = {
   if (session) {
     currentUser = session.user;
     await loadData();
+    await loadBudget();
     showAppShell();
     renderHome();
   } else {
@@ -904,12 +1248,14 @@ const App = {
     if (event === 'SIGNED_IN' && !currentUser) {
       currentUser = session.user;
       await loadData();
+      await loadBudget();
       showAppShell();
       renderHome();
     } else if (event === 'SIGNED_OUT') {
       currentUser = null;
       state.wallets = [];
       state.transactions = [];
+      state.budget = { period: 'monthly', total: 0, categories: { Food: 0, Transport: 0, Shopping: 0, Bills: 0, Others: 0 } };
       showAuthPage();
     }
   });

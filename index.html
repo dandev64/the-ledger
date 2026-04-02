@@ -102,6 +102,8 @@
           <!-- rendered by JS -->
         </div>
 
+        <div id="home-budget"></div>
+
         <div class="section-row" style="margin-top:24px">
           <span class="section-title">Recent Activity</span>
           <button class="icon-btn-sm" onclick="App.navigate('history')">
@@ -137,7 +139,7 @@
         <div class="amount-block-label" id="add-amount-label">Amount Spent</div>
         <div class="amount-row">
           <span class="peso-sign">₱</span>
-          <input type="number" id="add-amount" class="amount-field" placeholder="0.00" min="0" step="0.01" inputmode="decimal">
+          <input type="number" id="add-amount" class="amount-field" placeholder="0.00" min="0" step="0.01" inputmode="decimal" oninput="App.updateBudgetWarning()">
         </div>
       </div>
 
@@ -159,6 +161,7 @@
             <button class="cat-chip" data-cat="Bills" onclick="App.selectCategory(this)">Bills</button>
             <button class="cat-chip" data-cat="Others" onclick="App.selectCategory(this)">Others</button>
           </div>
+          <div id="budget-warning" class="budget-warning hidden"></div>
         </div>
 
         <div class="form-group">
@@ -263,6 +266,17 @@
       </div>
     </div>
 
+    <!-- ═══════════════════ PAGE: BUDGET ═══════════════════ -->
+    <div id="page-budget" class="page">
+      <div class="page-header">
+        <h1 class="page-title">Budget</h1>
+        <p class="page-subtitle">Define your spending limits</p>
+      </div>
+      <div id="budget-page-content">
+        <!-- rendered by JS -->
+      </div>
+    </div>
+
     <!-- ═══════════════════ BOTTOM NAV ═══════════════════ -->
     <nav class="bottom-nav" id="bottom-nav">
       <button class="nav-item active" id="nav-home" onclick="App.navigate('home')" aria-label="Home">
@@ -288,6 +302,13 @@
           <rect x="18" y="3" width="4" height="18"/><rect x="10" y="8" width="4" height="13"/><rect x="2" y="13" width="4" height="8"/>
         </svg>
         <span class="nav-label">REPORTS</span>
+      </button>
+      <button class="nav-item" id="nav-budget" onclick="App.navigate('budget')" aria-label="Budget">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>
+          <path d="M22 12A10 10 0 0 0 12 2v10z"/>
+        </svg>
+        <span class="nav-label">BUDGET</span>
       </button>
     </nav>
 
