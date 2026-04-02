@@ -972,11 +972,72 @@ let _walletEditId   = null;
 let _walletIconSel  = WALLET_ICONS[0];
 let _walletColorSel = WALLET_COLORS[0];
 
-function openModal()  { document.getElementById('modal-overlay').classList.remove('hidden'); }
+function openModal() {
+  const overlay = document.getElementById('modal-overlay');
+  const sheet   = document.getElementById('modal-sheet');
+  overlay.classList.remove('hidden');
+  sheet.style.transform = '';
+  initSheetDrag(sheet, overlay);
+}
 function closeModal(e) {
   if (!e || e.target === document.getElementById('modal-overlay')) {
     document.getElementById('modal-overlay').classList.add('hidden');
   }
+}
+
+function initSheetDrag(sheet, overlay) {
+  let startY = 0, currentY = 0, dragging = false;
+
+  function onStart(e) {
+    // Only start drag from the handle or the top padding area
+    const touch = e.touches ? e.touches[0] : e;
+    const rect  = sheet.getBoundingClientRect();
+    if (touch.clientY - rect.top > 48) return; // only top 48px triggers drag
+    dragging = true;
+    startY   = touch.clientY;
+    sheet.classList.add('is-dragging');
+  }
+
+  function onMove(e) {
+    if (!dragging) return;
+    const touch = e.touches ? e.touches[0] : e;
+    currentY = Math.max(0, touch.clientY - startY); // only drag down
+    sheet.style.transform = `translateY(${currentY}px)`;
+    overlay.style.background = `rgba(0,0,0,${Math.max(0, 0.45 - currentY / 600)})`;
+  }
+
+  function onEnd() {
+    if (!dragging) return;
+    dragging = false;
+    sheet.classList.remove('is-dragging');
+    if (currentY > 120) {
+      sheet.style.transition = 'transform 0.2s ease';
+      sheet.style.transform  = 'translateY(100%)';
+      setTimeout(() => {
+        overlay.classList.add('hidden');
+        sheet.style.transform  = '';
+        sheet.style.transition = '';
+        overlay.style.background = '';
+      }, 200);
+    } else {
+      sheet.style.transform = '';
+      overlay.style.background = '';
+    }
+    currentY = 0;
+  }
+
+  // Remove previous listeners to avoid stacking
+  sheet.removeEventListener('touchstart', sheet._dragStart);
+  sheet.removeEventListener('touchmove',  sheet._dragMove);
+  sheet.removeEventListener('touchend',   sheet._dragEnd);
+
+  sheet._dragStart = onStart;
+  sheet._dragMove  = onMove;
+  sheet._dragEnd   = onEnd;
+
+  sheet.addEventListener('touchstart', onStart, { passive: true });
+  sheet.addEventListener('touchmove',  onMove,  { passive: true });
+  sheet.addEventListener('touchend',   onEnd);
 }
 
 function openWalletManager() {

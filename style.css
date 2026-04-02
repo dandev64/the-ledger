@@ -931,6 +931,12 @@ input[type="datetime-local"] { color-scheme: light; }
   max-height: 92dvh;
   overflow-y: auto;
   animation: slideUp 0.25s ease;
+  transition: transform 0.05s linear;
+  will-change: transform;
+}
+.modal-sheet.is-dragging {
+  transition: none;
+  user-select: none;
 }
 @keyframes slideUp {
   from { transform: translateY(100%); }
