@@ -1291,6 +1291,29 @@ input[type="datetime-local"] { color-scheme: light; }
 }
 
 /* ══════════════════════════════════════════════════
+   BUDGET PAGE LAYOUT
+══════════════════════════════════════════════════ */
+.page-budget {
+  display: none;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding-bottom: 0;
+}
+.page-budget.active {
+  display: flex;
+}
+.budget-scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 16px;
+}
+.budget-sticky-footer {
+  padding: 12px 20px calc(var(--nav-h) + var(--safe-bottom) + 8px);
+  background: var(--body-bg);
+  border-top: 1px solid var(--border);
+}
+
+/* ══════════════════════════════════════════════════
    BUDGET WIDGET (Home)
 ══════════════════════════════════════════════════ */
 #home-budget {
@@ -1515,7 +1538,7 @@ input[type="datetime-local"] { color-scheme: light; }
   min-height: 16px;
 }
 .budget-settings-cats {
-  padding: 8px 20px 110px;
+  padding: 8px 20px 16px;
   display: flex;
   flex-direction: column;
   gap: 6px;
