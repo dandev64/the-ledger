@@ -17,7 +17,8 @@ const CATEGORIES = {
   Shopping:  { emoji: '🛍️', bg: '#fdf4ff', color: '#a855f7' },
   Bills:     { emoji: '⚡',  bg: '#fefce8', color: '#eab308' },
   Others:    { emoji: '📦', bg: '#f0fdf4', color: '#22c55e' },
-  'Cash-in': { emoji: '💰', bg: '#d1fae5', color: '#059669' },
+  'Cash-in':  { emoji: '💰', bg: '#d1fae5', color: '#059669' },
+  'Transfer': { emoji: '🔄', bg: '#eff6ff', color: '#3b82f6' },
 };
 
 const WALLET_ICONS  = ['📱', '💵', '🏦', '💳', '👛', '🏧', '💎', '🪙'];
@@ -33,7 +34,7 @@ let state = {
   transactions: [],
   budget: { period: 'monthly', total: 0, categories: { Food: 0, Transport: 0, Shopping: 0, Bills: 0, Others: 0 } },
   currentPage: 'home',
-  addForm: { type: 'expense', walletId: null, category: 'Food' },
+  addForm: { type: 'expense', walletId: null, toWalletId: null, category: 'Food' },
   historyFilter: 'all',
   reportPeriod: 'week',
 };
@@ -78,7 +79,11 @@ function fmtShort(n) {
 function walletById(id) { return state.wallets.find(w => w.id === id); }
 
 function txLabel(tx) {
-  return tx.note || (tx.type === 'cashin' ? 'Cash In' : tx.category);
+  if (tx.note) return tx.note;
+  if (tx.type === 'cashin')        return 'Cash In';
+  if (tx.type === 'transfer-out')  return 'Transfer Out';
+  if (tx.type === 'transfer-in')   return 'Transfer In';
+  return tx.category;
 }
 
 function formatTime(isoStr) {
@@ -223,7 +228,7 @@ function navigate(page) {
 // ══════════════════════════════════════════════════
 function renderHome() {
   const total = state.wallets.reduce((s, w) => s + w.balance, 0);
-  document.getElementById('home-total-balance').textContent = fmt(total);
+  document.getElementById('home-tol-balance').textContent = fmt(total);
 
   const todayStart = new Date(); todayStart.setHours(0,0,0,0);
   const ystStart   = new Date(todayStart); ystStart.setDate(ystStart.getDate()-1);
@@ -240,10 +245,9 @@ function renderHome() {
 
   const wc = document.getElementById('home-wallets');
   wc.innerHTML = state.wallets.map(w => `
-    <div class="wallet-card" onclick="App.openWalletManager()">
+    <div class="wallet-card" onclick="App.openWalletEdit('${w.id}')">
       <div class="wallet-card-top">
         <div class="wallet-icon" style="background:${w.color}22">${w.icon}</div>
-        <button class="wallet-card-menu" onclick="event.stopPropagation();App.openWalletEdit('${w.id}')">⋯</button>
       </div>
       <div class="wallet-card-name">${w.name}</div>
       <div class="wallet-card-balance">${fmt(w.balance)}</div>
@@ -274,8 +278,10 @@ function renderHome() {
     return;
   }
   rc.innerHTML = recent.map(tx => {
-    const w   = walletById(tx.walletId);
-    const cat = tx.type === 'cashin' ? 'Cash-in' : tx.category;
+    const w    = walletById(tx.walletId);
+    const cat  = tx.type === 'cashin' ? 'Cash-in' : (tx.type === 'transfer-out' || tx.type === 'transfer-in') ? 'Transfer' : tx.category;
+    const sign = (tx.type === 'expense' || tx.type === 'transfer-out') ? '-' : '+';
+    const amtCls = (tx.type === 'transfer-out') ? 'expense' : (tx.type === 'transfer-in') ? 'cashin' : tx.type;
     return `
       <div class="tx-item" onclick="App.openTxDetail('${tx.id}')">
         <div class="tx-icon" style="background:${catBg(cat)}">${catIcon(cat)}</div>
@@ -284,7 +290,7 @@ function renderHome() {
           <div class="tx-meta">${w ? w.name : '—'} · ${formatDate(tx.date) === 'TODAY' ? 'Today' : formatDate(tx.date)}</div>
         </div>
         <div>
-          <div class="tx-amount ${tx.type}">${tx.type === 'expense' ? '-' : '+'}${fmt(tx.amount)}</div>
+          <div class="tx-amount ${amtCls}">${sign}${fmt(tx.amount)}</div>
           <div class="tx-time">${formatTime(tx.date)}</div>
         </div>
       </div>
@@ -300,10 +306,14 @@ function initAddForm() {
 
   document.getElementById('tab-expense').classList.toggle('active', f.type === 'expense');
   document.getElementById('tab-cashin').classList.toggle('active', f.type === 'cashin');
-  document.getElementById('fg-category').style.display = f.type === 'cashin' ? 'none' : '';
-  document.getElementById('add-amount-label').textContent = f.type === 'cashin' ? 'Amount Received' : 'Amount Spent';
-  document.getElementById('add-page-title').textContent   = f.type === 'cashin' ? 'Cash In' : 'Add Expense';
-  document.getElementById('save-btn-label').textContent   = f.type === 'cashin' ? 'Save Cash In' : 'Save Expense';
+  document.getElementById('tab-transfer').classList.toggle('active', f.type === 'transfer');
+  document.getElementById('fg-category').style.display    = (f.type === 'cashin' || f.type === 'transfer') ? 'none' : '';
+  document.getElementById('fg-to-wallet').style.display   = f.type === 'transfer' ? '' : 'none';
+  document.getElementById('fg-transfer-fee').style.display = f.type === 'transfer' ? '' : 'none';
+  document.getElementById('fg-wallet-label').textContent  = f.type === 'transfer' ? 'FROM ACCOUNT' : 'SELECT ACCOUNT';
+  document.getElementById('add-amount-label').textContent = f.type === 'cashin' ? 'Amount Received' : f.type === 'transfer' ? 'Amount to Transfer' : 'Amount Spent';
+  document.getElementById('add-page-title').textContent   = f.type === 'cashin' ? 'Cash In' : f.type === 'transfer' ? 'Transfer' : 'Add Expense';
+  document.getElementById('save-btn-label').textContent   = f.type === 'cashin' ? 'Save Cash In' : f.type === 'transfer' ? 'Save Transfer' : 'Save Expense';
 
   const now = new Date();
   now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
@@ -311,6 +321,8 @@ function initAddForm() {
 
   document.getElementById('add-amount').value = '';
   document.getElementById('add-note').value   = '';
+  const feeEl = document.getElementById('transfer-fee');
+  if (feeEl) feeEl.value = '';
 
   const wc = document.getElementById('add-wallet-chips');
   if (state.wallets.length === 0) {
@@ -326,6 +338,23 @@ function initAddForm() {
     `).join('');
   }
 
+  if (f.type === 'transfer') {
+    const others = state.wallets.filter(w => w.id !== f.walletId);
+    if (!f.toWalletId || f.toWalletId === f.walletId || !walletById(f.toWalletId)) {
+      f.toWalletId = others.length > 0 ? others[0].id : null;
+    }
+    const twc = document.getElementById('to-wallet-chips');
+    if (twc) {
+      twc.innerHTML = state.wallets.map(w => `
+        <button class="wallet-chip ${f.toWalletId === w.id ? 'active' : ''}"
+                onclick="App.selectToWallet('${w.id}')">
+          <span class="chip-icon">${w.icon}</span>
+          <span>${escHtml(w.name)}</span>
+        </button>
+      `).join('');
+    }
+  }
+
   document.querySelectorAll('.cat-chip').forEach(b => {
     b.classList.toggle('active', b.dataset.cat === f.category);
   });
@@ -339,7 +368,15 @@ function setAddType(type) {
 
 function selectWallet(id) {
   state.addForm.walletId = id;
-  document.querySelectorAll('.wallet-chip').forEach(b => {
+  document.querySelectorAll('#add-wallet-chips .wallet-chip').forEach(b => {
+    const btnId = b.getAttribute('onclick').match(/'([^']+)'/)[1];
+    b.classList.toggle('active', btnId === id);
+  });
+}
+
+function selectToWallet(id) {
+  state.addForm.toWalletId = id;
+  document.querySelectorAll('#to-wallet-chips .wallet-chip').forEach(b => {
     const btnId = b.getAttribute('onclick').match(/'([^']+)'/)[1];
     b.classList.toggle('active', btnId === id);
   });
@@ -356,11 +393,53 @@ async function saveTransaction() {
   const amountRaw = parseFloat(document.getElementById('add-amount').value);
   const dateVal   = document.getElementById('add-date').value;
   const note      = document.getElementById('add-note').value.trim();
-  const { type, walletId, category } = state.addForm;
+  const { type, walletId, toWalletId, category } = state.addForm;
 
   if (!amountRaw || amountRaw <= 0) { toast('Enter a valid amount', 'error'); return; }
   if (!walletId)                    { toast('Select a wallet', 'error'); return; }
   if (!dateVal)                     { toast('Set a date', 'error'); return; }
+
+  // ── Transfer ──────────────────────────────────────
+  if (type === 'transfer') {
+    if (!toWalletId)          { toast('Select a destination wallet', 'error'); return; }
+    if (walletId === toWalletId) { toast('From and To wallets must be different', 'error'); return; }
+    const feeRaw    = parseFloat(document.getElementById('transfer-fee')?.value) || 0;
+    const fromWallet = walletById(walletId);
+    const toWallet   = walletById(toWalletId);
+    if (!fromWallet || !toWallet) { toast('Wallet not found', 'error'); return; }
+    if (fromWallet.balance < amountRaw + feeRaw) {
+      toast('Insufficient balance in ' + fromWallet.name, 'error'); return;
+    }
+    const isoDate    = new Date(dateVal).toISOString();
+    const txOut = {
+      id: uid(), type: 'transfer-out', amount: amountRaw + feeRaw, walletId,
+      category: 'Transfer', date: isoDate,
+      note: note || `Transfer to ${toWallet.name}${feeRaw > 0 ? ` (fee: ${fmt(feeRaw)})` : ''}`,
+    };
+    const txIn = {
+      id: uid(), type: 'transfer-in', amount: amountRaw, walletId: toWalletId,
+      category: 'Transfer', date: isoDate,
+      note: note || `Transfer from ${fromWallet.name}`,
+    };
+    const newFromBal = fromWallet.balance - amountRaw - feeRaw;
+    const newToBal   = toWallet.balance + amountRaw;
+    const btn = document.getElementById('save-btn');
+    btn.disabled = true;
+    const [{ error: e1 }, { error: e2 }, { error: e3 }, { error: e4 }] = await Promise.all([
+      db.from('transactions').insert(txToDb(txOut)),
+      db.from('transactions').insert(txToDb(txIn)),
+      db.from('wallets').update({ balance: newFromBal }).eq('id', walletId),
+      db.from('wallets').update({ balance: newToBal }).eq('id', toWalletId),
+    ]);
+    btn.disabled = false;
+    if (e1 || e2 || e3 || e4) { toast('Failed to save', 'error'); return; }
+    state.transactions.unshift(txOut, txIn);
+    fromWallet.balance = newFromBal;
+    toWallet.balance   = newToBal;
+    toast('✓ Transfer recorded', 'success');
+    navigate('home');
+    return;
+  }
 
   const wallet = walletById(walletId);
   if (!wallet) { toast('Wallet not found', 'error'); return; }
@@ -429,6 +508,7 @@ function renderHistory() {
 
   if (filter === 'expense')   txs = txs.filter(t => t.type === 'expense');
   if (filter === 'cashin')    txs = txs.filter(t => t.type === 'cashin');
+  if (filter === 'transfer')  txs = txs.filter(t => t.type === 'transfer-out' || t.type === 'transfer-in');
   if (filter === 'this-week') txs = txs.filter(t => new Date(t.date) >= weekAgo);
   if (['Food','Transport','Shopping','Bills','Others'].includes(filter)) {
     txs = txs.filter(t => t.category === filter);
@@ -468,17 +548,20 @@ function renderHistory() {
         <span class="history-group-date-right">${formatDateShort(items[0].date)}</span>
       </div>
       ${items.map(tx => {
-        const w   = walletById(tx.walletId);
-        const cat = tx.type === 'cashin' ? 'Cash-in' : tx.category;
+        const w      = walletById(tx.walletId);
+        const isTransfer = tx.type === 'transfer-out' || tx.type === 'transfer-in';
+        const cat    = tx.type === 'cashin' ? 'Cash-in' : isTransfer ? 'Transfer' : tx.category;
+        const sign   = (tx.type === 'expense' || tx.type === 'transfer-out') ? '-' : '+';
+        const amtCls = tx.type === 'transfer-out' ? 'expense' : tx.type === 'transfer-in' ? 'cashin' : tx.type;
         return `
           <div class="htx-item" onclick="App.openTxDetail('${tx.id}')">
             <div class="htx-icon" style="background:${catBg(cat)}">${catIcon(cat)}</div>
             <div class="htx-info">
               <div class="htx-name">${escHtml(txLabel(tx))}</div>
-              <div class="htx-meta">${w ? w.name : '—'} · ${tx.category}</div>
+              <div class="htx-meta">${w ? w.name : '—'} · ${cat}</div>
             </div>
             <div class="htx-right">
-              <div class="htx-amount ${tx.type}">${tx.type === 'expense' ? '-' : '+'}${fmt(tx.amount)}</div>
+              <div class="htx-amount ${amtCls}">${sign}${fmt(tx.amount)}</div>
               <div class="htx-time">${formatTime(tx.date)}</div>
             </div>
           </div>
@@ -1188,16 +1271,17 @@ function openTxDetail(id) {
   const tx = state.transactions.find(t => t.id === id);
   if (!tx) return;
   const w   = walletById(tx.walletId);
-  const cat = tx.type === 'cashin' ? 'Cash-in' : tx.category;
+  const isTransfer = tx.type === 'transfer-out' || tx.type === 'transfer-in';
+  const cat = tx.type === 'cashin' ? 'Cash-in' : isTransfer ? 'Transfer' : tx.category;
   const html = `
     <div style="text-align:center;margin-bottom:20px">
       <div style="width:60px;height:60px;border-radius:18px;background:${catBg(cat)};display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 12px">${catIcon(cat)}</div>
-      <div style="font-size:28px;font-weight:800;color:${tx.type === 'cashin' ? 'var(--green)' : 'var(--red)'};letter-spacing:-0.02em">
-        ${tx.type === 'expense' ? '-' : '+'}${fmt(tx.amount)}
+      <div style="font-size:28px;font-weight:800;color:${(tx.type === 'cashin' || tx.type === 'transfer-in') ? 'var(--green)' : 'var(--red)'};letter-spacing:-0.02em">
+        ${(tx.type === 'expense' || tx.type === 'transfer-out') ? '-' : '+'}${fmt(tx.amount)}
       </div>
       <div style="font-size:15px;font-weight:600;color:var(--text-mid);margin-top:4px">${escHtml(txLabel(tx))}</div>
     </div>
-    <div class="tx-detail-row"><span class="tx-detail-label">Type</span><span class="tx-detail-value">${tx.type === 'cashin' ? 'Cash In' : 'Expense'}</span></div>
+    <div class="tx-detail-row"><span class="tx-detail-label">Type</span><span class="tx-detail-value">${tx.type === 'cashin' ? 'Cash In' : tx.type === 'transfer-out' ? 'Transfer Out' : tx.type === 'transfer-in' ? 'Transfer In' : 'Expense'}</span></div>
     <div class="tx-detail-row"><span class="tx-detail-label">Category</span><span class="tx-detail-value">${cat}</span></div>
     <div class="tx-detail-row"><span class="tx-detail-label">Wallet</span><span class="tx-detail-value">${w ? w.icon + ' ' + w.name : '—'}</span></div>
     <div class="tx-detail-row"><span class="tx-detail-label">Date</span><span class="tx-detail-value">${new Date(tx.date).toLocaleDateString('en-PH', {year:'numeric',month:'long',day:'numeric'})}</span></div>
@@ -1253,6 +1337,7 @@ const App = {
   navigate,
   setAddType,
   selectWallet,
+  selectToWallet,
   selectCategory,
   saveTransaction,
   setHistoryFilter,
