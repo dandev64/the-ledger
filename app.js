@@ -17,8 +17,9 @@ const CATEGORIES = {
   Shopping:  { emoji: '🛍️', bg: '#fdf4ff', color: '#a855f7' },
   Bills:     { emoji: '⚡',  bg: '#fefce8', color: '#eab308' },
   Others:    { emoji: '📦', bg: '#f0fdf4', color: '#22c55e' },
-  'Cash-in':  { emoji: '💰', bg: '#d1fae5', color: '#059669' },
-  'Transfer': { emoji: '🔄', bg: '#eff6ff', color: '#3b82f6' },
+  'Cash-in':    { emoji: '💰', bg: '#d1fae5', color: '#059669' },
+  'Transfer':   { emoji: '🔄', bg: '#eff6ff', color: '#3b82f6' },
+  'Adjustment': { emoji: '✏️', bg: '#f5f3ff', color: '#7C3AED' },
 };
 
 const WALLET_ICONS  = ['📱', '💵', '🏦', '💳', '👛', '🏧', '💎', '🪙'];
@@ -83,7 +84,20 @@ function txLabel(tx) {
   if (tx.type === 'cashin')        return 'Cash In';
   if (tx.type === 'transfer-out')  return 'Transfer Out';
   if (tx.type === 'transfer-in')   return 'Transfer In';
+  if (tx.type === 'adjustment')    return 'Balance Adjustment';
   return tx.category;
+}
+
+function txCat(tx) {
+  if (tx.type === 'cashin')       return 'Cash-in';
+  if (tx.type === 'transfer-out' || tx.type === 'transfer-in') return 'Transfer';
+  if (tx.type === 'adjustment')   return 'Adjustment';
+  return tx.category;
+}
+
+function txIsNegative(tx) {
+  return tx.type === 'expense' || tx.type === 'transfer-out' ||
+    (tx.type === 'adjustment' && tx.amount < 0);
 }
 
 function formatTime(isoStr) {
@@ -245,7 +259,7 @@ function renderHome() {
 
   const wc = document.getElementById('home-wallets');
   wc.innerHTML = state.wallets.map(w => `
-    <div class="wallet-card" onclick="App.openWalletEdit('${w.id}')">
+    <div class="wallet-card" onclick="App.openWalletDetail('${w.id}')">
       <div class="wallet-card-top">
         <div class="wallet-icon" style="background:${w.color}22">${w.icon}</div>
       </div>
@@ -278,10 +292,12 @@ function renderHome() {
     return;
   }
   rc.innerHTML = recent.map(tx => {
-    const w    = walletById(tx.walletId);
-    const cat  = tx.type === 'cashin' ? 'Cash-in' : (tx.type === 'transfer-out' || tx.type === 'transfer-in') ? 'Transfer' : tx.category;
-    const sign = (tx.type === 'expense' || tx.type === 'transfer-out') ? '-' : '+';
-    const amtCls = (tx.type === 'transfer-out') ? 'expense' : (tx.type === 'transfer-in') ? 'cashin' : tx.type;
+    const w      = walletById(tx.walletId);
+    const cat    = txCat(tx);
+    const neg    = txIsNegative(tx);
+    const sign   = neg ? '-' : '+';
+    const dispAmt = Math.abs(tx.amount);
+    const amtCls  = neg ? 'expense' : 'cashin';
     return `
       <div class="tx-item" onclick="App.openTxDetail('${tx.id}')">
         <div class="tx-icon" style="background:${catBg(cat)}">${catIcon(cat)}</div>
@@ -290,7 +306,7 @@ function renderHome() {
           <div class="tx-meta">${w ? w.name : '—'} · ${formatDate(tx.date) === 'TODAY' ? 'Today' : formatDate(tx.date)}</div>
         </div>
         <div>
-          <div class="tx-amount ${amtCls}">${sign}${fmt(tx.amount)}</div>
+          <div class="tx-amount ${amtCls}">${sign}${fmt(dispAmt)}</div>
           <div class="tx-time">${formatTime(tx.date)}</div>
         </div>
       </div>
@@ -548,11 +564,12 @@ function renderHistory() {
         <span class="history-group-date-right">${formatDateShort(items[0].date)}</span>
       </div>
       ${items.map(tx => {
-        const w      = walletById(tx.walletId);
-        const isTransfer = tx.type === 'transfer-out' || tx.type === 'transfer-in';
-        const cat    = tx.type === 'cashin' ? 'Cash-in' : isTransfer ? 'Transfer' : tx.category;
-        const sign   = (tx.type === 'expense' || tx.type === 'transfer-out') ? '-' : '+';
-        const amtCls = tx.type === 'transfer-out' ? 'expense' : tx.type === 'transfer-in' ? 'cashin' : tx.type;
+        const w       = walletById(tx.walletId);
+        const cat     = txCat(tx);
+        const neg     = txIsNegative(tx);
+        const sign    = neg ? '-' : '+';
+        const dispAmt = Math.abs(tx.amount);
+        const amtCls  = neg ? 'expense' : 'cashin';
         return `
           <div class="htx-item" onclick="App.openTxDetail('${tx.id}')">
             <div class="htx-icon" style="background:${catBg(cat)}">${catIcon(cat)}</div>
@@ -561,7 +578,7 @@ function renderHistory() {
               <div class="htx-meta">${w ? w.name : '—'} · ${cat}</div>
             </div>
             <div class="htx-right">
-              <div class="htx-amount ${amtCls}">${sign}${fmt(tx.amount)}</div>
+              <div class="htx-amount ${amtCls}">${sign}${fmt(dispAmt)}</div>
               <div class="htx-time">${formatTime(tx.date)}</div>
             </div>
           </div>
@@ -1124,6 +1141,88 @@ function initSheetDrag(sheet, overlay) {
   sheet.addEventListener('touchend',   onEnd);
 }
 
+function openWalletDetail(id) {
+  const w = walletById(id);
+  if (!w) return;
+
+  const txs = [...state.transactions.filter(t => t.walletId === id)]
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const totalIn  = txs.filter(t => !txIsNegative(t)).reduce((s, t) => s + Math.abs(t.amount), 0);
+  const totalOut = txs.filter(t =>  txIsNegative(t)).reduce((s, t) => s + Math.abs(t.amount), 0);
+
+  const groups = {};
+  txs.forEach(tx => {
+    const key = formatDate(tx.date);
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(tx);
+  });
+
+  const txListHtml = Object.entries(groups).map(([date, items]) => `
+    <div class="history-group">
+      <div class="history-group-header">
+        <span class="history-group-date">${date}</span>
+        <span class="history-group-date-right">${formatDateShort(items[0].date)}</span>
+      </div>
+      ${items.map(tx => {
+        const cat     = txCat(tx);
+        const neg     = txIsNegative(tx);
+        const sign    = neg ? '-' : '+';
+        const dispAmt = Math.abs(tx.amount);
+        return `
+          <div class="htx-item" onclick="App.openTxDetail('${tx.id}')">
+            <div class="htx-icon" style="background:${catBg(cat)}">${catIcon(cat)}</div>
+            <div class="htx-info">
+              <div class="htx-name">${escHtml(txLabel(tx))}</div>
+              <div class="htx-meta">${cat}</div>
+            </div>
+            <div class="htx-right">
+              <div class="htx-amount ${neg ? 'expense' : 'cashin'}">${sign}${fmt(dispAmt)}</div>
+              <div class="htx-time">${formatTime(tx.date)}</div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `).join('');
+
+  const html = `
+    <div class="wdet-header">
+      <div class="wdet-icon" style="background:${w.color}22">${w.icon}</div>
+      <div class="wdet-info">
+        <div class="wdet-name">${escHtml(w.name)}</div>
+        <div class="wdet-balance">${fmt(w.balance)}</div>
+      </div>
+    </div>
+    <div class="wdet-stats">
+      <div class="wdet-stat">
+        <div class="wdet-stat-lbl">Total In</div>
+        <div class="wdet-stat-val cashin">+${fmt(totalIn)}</div>
+      </div>
+      <div class="wdet-stat-sep"></div>
+      <div class="wdet-stat">
+        <div class="wdet-stat-lbl">Total Out</div>
+        <div class="wdet-stat-val expense">-${fmt(totalOut)}</div>
+      </div>
+      <div class="wdet-stat-sep"></div>
+      <div class="wdet-stat">
+        <div class="wdet-stat-lbl">Transactions</div>
+        <div class="wdet-stat-val">${txs.length}</div>
+      </div>
+    </div>
+    ${txs.length === 0
+      ? `<div style="text-align:center;padding:32px 0;color:var(--text-muted);font-size:14px">No transactions yet</div>`
+      : `<div class="wdet-txlist">${txListHtml}</div>`
+    }
+    <div class="modal-btn-row" style="margin-top:16px">
+      <button class="btn-primary" style="flex:1" onclick="App.openWalletEdit('${id}')">Edit Wallet</button>
+      <button class="btn-ghost"   style="flex:1" onclick="App.closeModal(null)">Close</button>
+    </div>
+  `;
+  document.getElementById('modal-content').innerHTML = html;
+  openModal();
+}
+
 function openWalletManager() {
   _walletEditId = null;
   const html = `
@@ -1232,9 +1331,24 @@ async function saveWallet() {
   if (_walletEditId) {
     const w = walletById(_walletEditId);
     if (!w) return;
-    const updated = { ...w, name, icon: _walletIconSel, color: _walletColorSel, balance: isNaN(balance) ? w.balance : balance };
+    const oldBalance = w.balance;
+    const newBal     = isNaN(balance) ? w.balance : balance;
+    const updated    = { ...w, name, icon: _walletIconSel, color: _walletColorSel, balance: newBal };
     const { error } = await db.from('wallets').update(walletToDb(updated)).eq('id', _walletEditId);
     if (error) { toast('Failed to save', 'error'); return; }
+
+    // Log balance change as an adjustment transaction
+    if (newBal !== oldBalance) {
+      const diff  = newBal - oldBalance;
+      const adjTx = {
+        id: uid(), type: 'adjustment', amount: diff, walletId: _walletEditId,
+        category: 'Adjustment', date: new Date().toISOString(),
+        note: `Balance adjusted (${diff > 0 ? '+' : ''}${fmt(diff)})`,
+      };
+      await db.from('transactions').insert(txToDb(adjTx));
+      state.transactions.unshift(adjTx);
+    }
+
     Object.assign(w, updated);
     toast('Wallet updated', 'success');
   } else {
@@ -1271,17 +1385,19 @@ function openTxDetail(id) {
   const tx = state.transactions.find(t => t.id === id);
   if (!tx) return;
   const w   = walletById(tx.walletId);
-  const isTransfer = tx.type === 'transfer-out' || tx.type === 'transfer-in';
-  const cat = tx.type === 'cashin' ? 'Cash-in' : isTransfer ? 'Transfer' : tx.category;
+  const cat = txCat(tx);
+  const neg = txIsNegative(tx);
+  const dispAmt = Math.abs(tx.amount);
+  const typeLabel = { expense: 'Expense', cashin: 'Cash In', 'transfer-out': 'Transfer Out', 'transfer-in': 'Transfer In', adjustment: 'Adjustment' }[tx.type] || tx.type;
   const html = `
     <div style="text-align:center;margin-bottom:20px">
       <div style="width:60px;height:60px;border-radius:18px;background:${catBg(cat)};display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 12px">${catIcon(cat)}</div>
-      <div style="font-size:28px;font-weight:800;color:${(tx.type === 'cashin' || tx.type === 'transfer-in') ? 'var(--green)' : 'var(--red)'};letter-spacing:-0.02em">
-        ${(tx.type === 'expense' || tx.type === 'transfer-out') ? '-' : '+'}${fmt(tx.amount)}
+      <div style="font-size:28px;font-weight:800;color:${neg ? 'var(--red)' : 'var(--green)'};letter-spacing:-0.02em">
+        ${neg ? '-' : '+'}${fmt(dispAmt)}
       </div>
       <div style="font-size:15px;font-weight:600;color:var(--text-mid);margin-top:4px">${escHtml(txLabel(tx))}</div>
     </div>
-    <div class="tx-detail-row"><span class="tx-detail-label">Type</span><span class="tx-detail-value">${tx.type === 'cashin' ? 'Cash In' : tx.type === 'transfer-out' ? 'Transfer Out' : tx.type === 'transfer-in' ? 'Transfer In' : 'Expense'}</span></div>
+    <div class="tx-detail-row"><span class="tx-detail-label">Type</span><span class="tx-detail-value">${typeLabel}</span></div>
     <div class="tx-detail-row"><span class="tx-detail-label">Category</span><span class="tx-detail-value">${cat}</span></div>
     <div class="tx-detail-row"><span class="tx-detail-label">Wallet</span><span class="tx-detail-value">${w ? w.icon + ' ' + w.name : '—'}</span></div>
     <div class="tx-detail-row"><span class="tx-detail-label">Date</span><span class="tx-detail-value">${new Date(tx.date).toLocaleDateString('en-PH', {year:'numeric',month:'long',day:'numeric'})}</span></div>
@@ -1302,7 +1418,10 @@ async function deleteTx(id) {
   if (!confirm('Delete this transaction?')) return;
 
   const wallet     = walletById(tx.walletId);
-  const newBalance = wallet ? wallet.balance + (tx.type === 'cashin' ? -tx.amount : tx.amount) : null;
+  // Reverse the effect: cashin/transfer-in/adjustment → subtract; expense/transfer-out → add back
+  const reversal   = (tx.type === 'cashin' || tx.type === 'transfer-in' || tx.type === 'adjustment')
+    ? -tx.amount : tx.amount;
+  const newBalance = wallet ? wallet.balance + reversal : null;
 
   const ops = [db.from('transactions').delete().eq('id', id)];
   if (wallet && newBalance !== null) {
@@ -1343,6 +1462,7 @@ const App = {
   setHistoryFilter,
   renderHistory,
   setReportPeriod,
+  openWalletDetail,
   openWalletManager,
   openWalletAdd,
   openWalletEdit,
