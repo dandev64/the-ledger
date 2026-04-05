@@ -228,7 +228,7 @@ function navigate(page) {
 // ══════════════════════════════════════════════════
 function renderHome() {
   const total = state.wallets.reduce((s, w) => s + w.balance, 0);
-  document.getElementById('home-tol-balance').textContent = fmt(total);
+  document.getElementById('home-total-balance').textContent = fmt(total);
 
   const todayStart = new Date(); todayStart.setHours(0,0,0,0);
   const ystStart   = new Date(todayStart); ystStart.setDate(ystStart.getDate()-1);
