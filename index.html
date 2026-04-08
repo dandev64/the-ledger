@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#7C3AED">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="The Ledger">
-  <title>The Ledger</title>
+  <meta name="apple-mobile-web-app-title" content="You're Broke">
+  <title>You're Broke</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon-192.svg">
   <link rel="stylesheet" href="style.css">
@@ -24,7 +24,7 @@
           <rect x="1" y="13" width="8" height="8" rx="2" fill="#7C3AED" opacity="0.6"/>
           <rect x="13" y="13" width="8" height="8" rx="2" fill="#c4b5fd"/>
         </svg>
-        <span class="auth-logo-text">The Ledger</span>
+        <span class="auth-logo-text">You're Broke</span>
       </div>
       <p class="auth-tagline">Your personal finance tracker</p>
 
@@ -63,7 +63,7 @@
               <rect x="1" y="13" width="8" height="8" rx="2" fill="white" opacity="0.6"/>
               <rect x="13" y="13" width="8" height="8" rx="2" fill="#c4b5fd"/>
             </svg>
-            <span class="logo-text">The Ledger</span>
+            <span class="logo-text">You're Broke</span>
           </div>
           <div class="home-header-actions">
             <button class="icon-btn" onclick="App.openNotifications()" aria-label="Notifications">
@@ -81,7 +81,7 @@
           </div>
         </div>
         <div class="balance-card">
-          <div class="balance-label">TOTAL BALANCE</div>
+          <div class="balance-label" id="home-balance-label">TOTAL BALANCE</div>
           <div class="balance-amount" id="home-total-balance">₱0.00</div>
           <div class="balance-meta">
             <div>

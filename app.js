@@ -38,7 +38,27 @@ let state = {
   addForm: { type: 'expense', walletId: null, toWalletId: null, category: 'Food' },
   historyFilter: 'all',
   reportPeriod: 'week',
+  excludedFromTotal: [],
 };
+
+function loadExcluded() {
+  if (!currentUser) return;
+  try {
+    const raw = localStorage.getItem('excl_' + currentUser.id);
+    state.excludedFromTotal = raw ? JSON.parse(raw) : [];
+  } catch { state.excludedFromTotal = []; }
+}
+function saveExcluded() {
+  if (!currentUser) return;
+  localStorage.setItem('excl_' + currentUser.id, JSON.stringify(state.excludedFromTotal));
+}
+function toggleWalletFromTotal(id) {
+  const idx = state.excludedFromTotal.indexOf(id);
+  if (idx === -1) state.excludedFromTotal.push(id);
+  else state.excludedFromTotal.splice(idx, 1);
+  saveExcluded();
+  renderHome();
+}
 
 // ── DB row mappers ────────────────────────────────
 function walletFromDb(row) {
@@ -241,8 +261,14 @@ function navigate(page) {
 // HOME
 // ══════════════════════════════════════════════════
 function renderHome() {
-  const total = state.wallets.reduce((s, w) => s + w.balance, 0);
+  const includedWallets = state.wallets.filter(w => !state.excludedFromTotal.includes(w.id));
+  const total = includedWallets.reduce((s, w) => s + w.balance, 0);
   document.getElementById('home-total-balance').textContent = fmt(total);
+  const balLabel = document.getElementById('home-balance-label');
+  if (balLabel) {
+    const excCount = state.excludedFromTotal.filter(id => state.wallets.find(w => w.id === id)).length;
+    balLabel.textContent = excCount > 0 ? `TOTAL BALANCE (${includedWallets.length}/${state.wallets.length} wallets)` : 'TOTAL BALANCE';
+  }
 
   const todayStart = new Date(); todayStart.setHours(0,0,0,0);
   const ystStart   = new Date(todayStart); ystStart.setDate(ystStart.getDate()-1);
@@ -258,15 +284,26 @@ function renderHome() {
   badge.className   = 'balance-badge' + (pct < 0 ? ' negative' : '');
 
   const wc = document.getElementById('home-wallets');
-  wc.innerHTML = state.wallets.map(w => `
-    <div class="wallet-card" onclick="App.openWalletDetail('${w.id}')">
+  wc.innerHTML = state.wallets.map(w => {
+    const excl = state.excludedFromTotal.includes(w.id);
+    return `
+    <div class="wallet-card${excl ? ' wallet-excluded' : ''}" onclick="App.openWalletDetail('${w.id}')">
       <div class="wallet-card-top">
         <div class="wallet-icon" style="background:${w.color}22">${w.icon}</div>
+        <button class="wallet-total-toggle${excl ? ' off' : ''}" title="${excl ? 'Include in total' : 'Exclude from total'}"
+                onclick="event.stopPropagation();App.toggleWalletFromTotal('${w.id}')">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            ${excl
+              ? `<circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/>`
+              : `<circle cx="6" cy="6" r="5" fill="currentColor"/>`}
+          </svg>
+        </button>
       </div>
       <div class="wallet-card-name">${w.name}</div>
       <div class="wallet-card-balance">${fmt(w.balance)}</div>
     </div>
-  `).join('') + `
+  `;
+  }).join('') + `
     <div class="add-wallet-card" onclick="App.openWalletAdd()">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -1404,12 +1441,137 @@ function openTxDetail(id) {
     <div class="tx-detail-row"><span class="tx-detail-label">Time</span><span class="tx-detail-value">${formatTime(tx.date)}</span></div>
     ${tx.note ? `<div class="tx-detail-row"><span class="tx-detail-label">Note</span><span class="tx-detail-value">${escHtml(tx.note)}</span></div>` : ''}
     <div class="modal-btn-row" style="margin-top:24px">
+      <button class="btn-primary" style="flex:1" onclick="App.openTxEdit('${id}')">Edit</button>
       <button class="btn-ghost" style="flex:1;color:var(--red);background:var(--red-pale)" onclick="App.deleteTx('${id}')">Delete</button>
-      <button class="btn-ghost" style="flex:1" onclick="App.closeModal(null)">Close</button>
     </div>
+    <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="App.closeModal(null)">Close</button>
   `;
   document.getElementById('modal-content').innerHTML = html;
   openModal();
+}
+
+function openTxEdit(id) {
+  const tx = state.transactions.find(t => t.id === id);
+  if (!tx) return;
+
+  const isTransfer = tx.type === 'transfer-out' || tx.type === 'transfer-in';
+  const canEditCat = tx.type === 'expense';
+
+  const d = new Date(tx.date);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  const dateVal = d.toISOString().slice(0, 16);
+
+  const expenseCats = ['Food', 'Transport', 'Shopping', 'Bills', 'Others'];
+  const catOptions = expenseCats.map(c =>
+    `<option value="${c}" ${tx.category === c ? 'selected' : ''}>${c}</option>`
+  ).join('');
+
+  const amountDisplay = tx.type === 'adjustment' ? tx.amount : Math.abs(tx.amount);
+
+  const html = `
+    <h3 class="modal-title">Edit Transaction</h3>
+    ${isTransfer
+      ? `<p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;padding:10px;background:#f9fafb;border-radius:10px">⚠️ Amount cannot be edited for transfers.</p>`
+      : `<div class="modal-field">
+          <label>${tx.type === 'adjustment' ? 'Adjustment Amount (use − for deduction)' : 'Amount'}</label>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="color:var(--purple);font-size:18px;font-weight:700">₱</span>
+            <input id="te-amount" class="modal-input" type="number" step="0.01"
+              ${tx.type === 'adjustment' ? '' : 'min="0.01"'}
+              value="${amountDisplay}" style="flex:1">
+          </div>
+        </div>`
+    }
+    ${canEditCat ? `
+    <div class="modal-field">
+      <label>Category</label>
+      <select id="te-category" class="modal-input">${catOptions}</select>
+    </div>` : ''}
+    <div class="modal-field">
+      <label>Date &amp; Time</label>
+      <input id="te-date" class="modal-input" type="datetime-local" value="${dateVal}">
+    </div>
+    <div class="modal-field">
+      <label>Note</label>
+      <input id="te-note" class="modal-input" type="text" placeholder="What was this for?" value="${escHtml(tx.note || '')}">
+    </div>
+    <div class="modal-btn-row" style="margin-top:8px">
+      <button class="btn-primary" style="flex:1" onclick="App.saveTxEdit('${id}')">Save</button>
+      <button class="btn-ghost" style="flex:1" onclick="App.openTxDetail('${id}')">Cancel</button>
+    </div>
+  `;
+  document.getElementById('modal-content').innerHTML = html;
+}
+
+async function saveTxEdit(id) {
+  const tx = state.transactions.find(t => t.id === id);
+  if (!tx) return;
+
+  const isTransfer = tx.type === 'transfer-out' || tx.type === 'transfer-in';
+  const canEditCat = tx.type === 'expense';
+
+  const dateVal = document.getElementById('te-date')?.value;
+  const note    = document.getElementById('te-note')?.value.trim() ?? '';
+  if (!dateVal) { toast('Set a date', 'error'); return; }
+
+  let newAmount  = tx.amount;
+  let newCategory = tx.category;
+
+  if (!isTransfer) {
+    const raw = parseFloat(document.getElementById('te-amount')?.value);
+    if (isNaN(raw) || (tx.type !== 'adjustment' && raw <= 0)) {
+      toast('Enter a valid amount', 'error'); return;
+    }
+    // For non-adjustment types, keep amount positive; for adjustment keep signed
+    newAmount = tx.type === 'adjustment' ? raw : Math.abs(raw);
+  }
+
+  if (canEditCat) {
+    newCategory = document.getElementById('te-category')?.value || tx.category;
+  }
+
+  const newDate = new Date(dateVal).toISOString();
+
+  // Compute wallet balance delta (only if amount changed)
+  const wallet = walletById(tx.walletId);
+  let newWalletBalance = wallet ? wallet.balance : null;
+
+  if (wallet && !isTransfer && newAmount !== tx.amount) {
+    if (tx.type === 'expense') {
+      newWalletBalance = wallet.balance + tx.amount - newAmount;
+    } else if (tx.type === 'cashin') {
+      newWalletBalance = wallet.balance - tx.amount + newAmount;
+    } else if (tx.type === 'adjustment') {
+      newWalletBalance = wallet.balance - tx.amount + newAmount;
+    }
+  }
+
+  const saveBtn = document.querySelector('#modal-content .btn-primary');
+  if (saveBtn) saveBtn.disabled = true;
+
+  const ops = [
+    db.from('transactions').update({
+      amount: newAmount,
+      category: newCategory,
+      date: newDate,
+      note,
+    }).eq('id', id),
+  ];
+  if (wallet && newWalletBalance !== null && newWalletBalance !== wallet.balance) {
+    ops.push(db.from('wallets').update({ balance: newWalletBalance }).eq('id', wallet.id));
+  }
+
+  const results = await Promise.all(ops);
+  if (saveBtn) saveBtn.disabled = false;
+  if (results.some(r => r.error)) { toast('Failed to save', 'error'); return; }
+
+  Object.assign(tx, { amount: newAmount, category: newCategory, date: newDate, note });
+  if (wallet && newWalletBalance !== null) wallet.balance = newWalletBalance;
+
+  toast('Transaction updated', 'success');
+  closeModal(null);
+  if (state.currentPage === 'home')    renderHome();
+  if (state.currentPage === 'history') renderHistory();
 }
 
 async function deleteTx(id) {
@@ -1470,7 +1632,10 @@ const App = {
   saveWallet,
   pickWalletIcon,
   pickWalletColor,
+  toggleWalletFromTotal,
   openTxDetail,
+  openTxEdit,
+  saveTxEdit,
   deleteTx,
   closeModal,
   openNotifications,
@@ -1497,6 +1662,7 @@ const App = {
     currentUser = session.user;
     await loadData();
     await loadBudget();
+    loadExcluded();
     showAppShell();
     renderHome();
   } else {
@@ -1508,6 +1674,7 @@ const App = {
       currentUser = session.user;
       await loadData();
       await loadBudget();
+      loadExcluded();
       showAppShell();
       renderHome();
     } else if (event === 'SIGNED_OUT') {
@@ -1515,6 +1682,7 @@ const App = {
       state.wallets = [];
       state.transactions = [];
       state.budget = { period: 'monthly', total: 0, categories: { Food: 0, Transport: 0, Shopping: 0, Bills: 0, Others: 0 } };
+      state.excludedFromTotal = [];
       showAuthPage();
     }
   });

@@ -248,6 +248,21 @@ input[type="datetime-local"] { color-scheme: light; }
   color: var(--text);
 }
 
+.wallet-total-toggle {
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--purple);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: opacity 0.15s;
+}
+.wallet-total-toggle.off { color: var(--text-light); }
+.wallet-card.wallet-excluded { opacity: 0.5; }
+
 .add-wallet-card {
   flex: 0 0 80px;
   background: white;
@@ -979,6 +994,7 @@ input[type="datetime-local"] { color-scheme: light; }
   transition: border-color 0.15s;
 }
 .modal-input:focus { border-color: var(--purple); }
+select.modal-input { appearance: auto; box-sizing: border-box; }
 
 .icon-picker {
   display: flex;
